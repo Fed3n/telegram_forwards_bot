@@ -124,9 +124,14 @@ def list_keys(update, context):
         if update.message.chat.type == "private":
             s = "Current key list:\n"
             for key, val in context.bot_data["data"].items():
-                #Prevents /list from showing full long messages
-                length = 30 if len(val[0].text) >= 30 else len(val[0].text)
-                s += key + " : " + val[0].text[:length] + "\n"
+                value = ""
+                if val[0].text != None:
+                    #Prevents /list from showing full long messages
+                    length = 30 if len(val[0].text) >= 30 else len(val[0].text)
+                    value = val[0].text[:length]
+                else:
+                    value = "<Media file>"
+                s += key + " : " + value + "\n"
             update.message.reply_text(s, disable_web_page_preview=True)
 
 ########################
