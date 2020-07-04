@@ -122,17 +122,33 @@ def rng_getter(update, context):
 @run_async
 def list_keys(update, context):
         if update.message.chat.type == "private":
-            s = "Current key list:\n"
+            #Telegram has a max msg size, list might be
+            #longer so a list of < max_length characters strings is used
+            #and printed sequentially
+            s_list = []
+            i = 0
+            s = f"Current key list({i+1}):\n"
+            current_len = len(s)
+            s_list.append(s)
             for key, val in context.bot_data["data"].items():
+                #If it's a message we copy part of its text else we write it as <Media file>
                 value = ""
                 if val[0].text != None:
-                    #Prevents /list from showing full long messages
+                    #Prevents /list from showing full length messages if too long
                     length = 30 if len(val[0].text) >= 30 else len(val[0].text)
                     value = val[0].text[:length]
                 else:
                     value = "<Media file>"
-                s += key + " : " + value + "\n"
-            update.message.reply_text(s, disable_web_page_preview=True)
+                value = key + " : " + value + "\n"
+                if current_len+len(value) > telegram.constants.MAX_MESSAGE_LENGTH:
+                    i += 1
+                    s = f"Current key list({i+1}):\n"
+                    current_len = len(s)
+                    s_list.append(s)
+                current_len += len(value)
+                s_list[i] += value
+            for s in s_list:
+                update.message.reply_text(s, disable_web_page_preview=True)
 
 ########################
 
