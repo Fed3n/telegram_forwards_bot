@@ -6,6 +6,7 @@ import datetime
 import os
 import sys
 import random
+from fwd_data import *
 from dotenv import load_dotenv
 from telegram.ext import *
 
@@ -52,8 +53,6 @@ def help(update, context):
 #Bot conversation to add a new key-value to database, issuable by all users
 
 def forward(update, context):
-    if update.message.chat.type != "private" and update.message.from_user.id not in ADMINS:
-        return
     if update.message.chat.type == "private":
         update.message.reply_text("Enter a key of alphabetical characters eventually"\
                                 "ending with digits for your forward. Key is not case sensitive.\n"
@@ -81,7 +80,8 @@ def update_dict(update, context):
         if digestmsg(msg) not in context.bot_data["hash"]:
             chmsg1 = context.bot.send_message(chat_id=TARGET_CH, text=f"Key: <{key}>")
             chmsg2 = context.bot.forward_message(chat_id=TARGET_CH, from_chat_id=msg.chat.id, message_id=msg.message_id)
-            context.bot_data["data"][key] = [msg, chmsg1, chmsg2]
+            fwd_data = fwdData(msg, chmsg1, chmsg2)
+            context.bot_data["data"][key] = fwd_data
             context.bot_data["hash"].add(digestmsg(msg))
             update.message.reply_text(f"Message saved with tag <{key}>.")
             return ConversationHandler.END
@@ -112,15 +112,15 @@ def getter(update, context):
         update.message.reply_text("Usage: < /fwd key >, pm me to learn more!")
     for arg in context.args:
         if arg in context.bot_data["data"]:
-            msg = context.bot_data["data"][arg][0]
-            print("str(msg): " + str(msg))
-            print("Hash: " + digestmsg(msg))
-            context.bot.forward_message(chat_id=update.message.chat.id, from_chat_id=msg.chat.id, message_id=msg.message_id)
+            fwd_data = context.bot_data["data"][arg.lower()]
+            fwd_data.counter_update()
+            context.bot.forward_message(chat_id=update.message.chat.id, from_chat_id=fwd_data.fwdmsg.chat.id, message_id=fwd_data.fwdmsg.message_id)
 
 @run_async
 def rng_getter(update, context):
-    msg = random.choice(list(context.bot_data["data"].values()))[0]
-    context.bot.forward_message(chat_id=update.message.chat.id, from_chat_id=msg.chat.id, message_id=msg.message_id)
+    fwd_data = random.choice(list(context.bot_data["data"].values()))
+    fwd_data.tot_counter_update()
+    context.bot.forward_message(chat_id=update.message.chat.id, from_chat_id=fwd_data.fwdmsg.chat.id, message_id=fwd_data.fwdmsg.message_id)
 
 @run_async
 def list_keys(update, context):
@@ -131,27 +131,36 @@ def list_keys(update, context):
         s_list = []
         i = 0
         s = f"Current key list({i+1}):\n"
-        current_len = len(s)
         s_list.append(s)
         for key, val in context.bot_data["data"].items():
             #If it's a message we copy part of its text else we write it as <Media file>
+            msg = val.fwdmsg
             value = ""
-            if val[0].text != None:
+            if msg.text != None:
                 #Prevents /list from showing full length messages if too long
-                length = 30 if len(val[0].text) >= 30 else len(val[0].text)
-                value = val[0].text[:length]
+                length = 30 if len(msg.text) >= 30 else len(msg.text)
+                value = msg.text[:length]
             else:
                 value = "<Media file>"
             value = key + " : " + value + "\n"
-            if current_len+len(value) > telegram.constants.MAX_MESSAGE_LENGTH:
+            if len(s_list[i])+len(value) > telegram.constants.MAX_MESSAGE_LENGTH:
                 i += 1
                 s = f"Current key list({i+1}):\n"
-                current_len = len(s)
                 s_list.append(s)
-            current_len += len(value)
             s_list[i] += value
         for s in s_list:
             update.message.reply_text(s, disable_web_page_preview=True)
+
+@run_async
+def get_stats(update, context):
+    if len(context.args) >= 1:
+        key = context.args[0]
+        if key in context.bot_data["data"]:
+            update.message.reply_text(f"<{key}>:\n" + context.bot_data["data"][key].stats())
+        else:
+            update.message.reply_text(f"Couldn't find key <{key}>!")
+    else:
+        update.message.reply_text("Usage: < /stat key > to get stats about a key.")
 
 ########################
 
@@ -172,9 +181,9 @@ def edit_key(update, context):
         if oldkey in context.bot_data["data"]:
             if newkey not in context.bot_data["data"]:
                 #Replacing key and editing key message in channel
-                msgs = context.bot_data["data"][oldkey]
-                context.bot_data["data"][newkey] = msgs
-                context.bot.edit_message_text(f"Key: <{newkey}>", chat_id=TARGET_CH, message_id=msgs[1].message_id)
+                fwd_data = context.bot_data["data"][oldkey]
+                context.bot_data["data"][newkey] = fwd_data
+                context.bot.edit_message_text(f"Key: <{newkey}>", chat_id=TARGET_CH, message_id=fwd_data.chmsg1.message_id)
                 del context.bot_data["data"][oldkey]
                 update.message.reply_text("Done!")
             else:
@@ -188,11 +197,11 @@ def remove_keys(update, context):
         update.message.reply_text("Deleting keys and editing out corresponding messages...")
         for arg in context.args:
             if arg in context.bot_data["data"]:
-                msgs = context.bot_data["data"][arg]
+                fwd_data = context.bot_data["data"][arg]
                 #There are heavy limits to bots deleting messages so editing is preferred
-                context.bot.edit_message_text("<removed>", chat_id=TARGET_CH, message_id=msgs[1].message_id)
+                context.bot.edit_message_text("<removed>", chat_id=TARGET_CH, message_id=fwd_data.chmsg1.message_id)
                 del context.bot_data["data"][arg]
-                context.bot_data["hash"].remove(digestmsg(msgs[0]))
+                context.bot_data["hash"].remove(digestmsg(fwd_data.fwdmsg))
         update.message.reply_text("Done!")        
 
 ########################
@@ -215,9 +224,20 @@ def rehash_data(dispatcher):
     print("Beginning rehashing...")
     dispatcher.bot_data["hash"].clear()
     for key, val in dispatcher.bot_data["data"].items():
-        msg = val[0]
+        msg = val.fwdmsg
         dispatcher.bot_data["hash"].add(digestmsg(msg))
     print("Done rehashing data. Hopefully.")
+
+
+def remake_dict(dispatcher):
+    print("Remaking dictionary...")
+    for key, val in dispatcher.bot_data["data"].items():
+        fwdmsg = dispatcher.bot_data["data"][key][0]
+        chmsg1 = dispatcher.bot_data["data"][key][1]
+        chmsg2 = dispatcher.bot_data["data"][key][2]
+        dispatcher.bot_data["data"][key] = fwdData(fwdmsg, chmsg1, chmsg2)
+        print(dispatcher.bot_data["data"][key].fwdmsg.forward_from_message_id)
+    print("Done remaking dict. Hopefully.")
 
 ########################
 
@@ -233,6 +253,7 @@ def main():
     dp.add_handler(CommandHandler("fwd", getter))
     dp.add_handler(CommandHandler("rng", rng_getter))
     dp.add_handler(CommandHandler("list", list_keys))
+    dp.add_handler(CommandHandler("stat", get_stats))
     dp.add_handler(CommandHandler("rmkey", remove_keys))
     dp.add_handler(CommandHandler("edkey", edit_key))
     dp.add_handler(CommandHandler("rehash", rehash_data))
@@ -261,9 +282,10 @@ def main():
     if len(sys.argv) > 1:
         if sys.argv[1] == "rehash":
             rehash_data(dp)
+        if sys.argv[1] == "remake":
+            remake_dict(dp)
         else:
             print("Invalid argument.")
-        exit()
 
     #Start! Bot will try to close nicely with CTRL+C by having issued idle()
     updater.start_polling()
