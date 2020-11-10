@@ -111,8 +111,9 @@ def getter(update, context):
     if len(context.args) < 1:
         update.message.reply_text("Usage: < /fwd key >, pm me to learn more!")
     for arg in context.args:
+        arg = arg.lower()
         if arg in context.bot_data["data"]:
-            fwd_data = context.bot_data["data"][arg.lower()]
+            fwd_data = context.bot_data["data"][arg]
             fwd_data.counter_update()
             context.bot.forward_message(chat_id=update.message.chat.id, from_chat_id=fwd_data.fwdmsg.chat.id, message_id=fwd_data.fwdmsg.message_id)
 
