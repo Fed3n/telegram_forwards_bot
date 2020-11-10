@@ -155,7 +155,7 @@ def list_keys(update, context):
 @run_async
 def get_stats(update, context):
     if len(context.args) >= 1:
-        key = context.args[0]
+        key = context.args[0].lower()
         if key in context.bot_data["data"]:
             update.message.reply_text(f"<{key}>:\n" + context.bot_data["data"][key].stats())
         else:
