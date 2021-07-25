@@ -26,8 +26,6 @@ Used during development whenever I change my hash function to check for existing
 
 This bot is developed in python3 using the [python-telegram-bot library](https://python-telegram-bot.readthedocs.io/en/stable/). I am using [python-dotenv](https://pypi.org/project/python-dotenv/) aswell but you can also make without.  
 First of all you will need your own [telegram bot](https://core.telegram.org/bots) (and its bot token), a telegram channel (and its channel id) and your (and maybe your friends'?) user id to set as admin. You can either use dotenv like I did and put an admin integer list, a channel integer id and a bot token string in a .env file inside your directory or remove dotenv imports and os.getdotenv("") references and put your data in clear instead (which is no big deal as long as the code does not leak). When this is set up you should be already able to run your istance of the bot. The database is a very simple implementation of persistence that came with the library, with a "data" textfile in your directory, be careful not to delete it by mistake if you do not wanna clear all your dictionary.  
-This bot will not save any kind of user data (exception made for forwarded messages, obviously).
-
 
 ## Contributing
 This is a very simple for fun project so there might not be any further development, but pull requests, suggestions or issues are still very welcome. :)

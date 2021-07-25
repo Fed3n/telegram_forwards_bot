@@ -1,5 +1,9 @@
 #tmp file
+**/**.swp
+**/**.swo
 data
 backupdata
 
-__pycache__/
+.env
+
+**/__pycache__

@@ -13,7 +13,7 @@ from telegram.ext import *
 load_dotenv()
 
 #Error checking in console
-logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+logging.basicConfig(filename="fwdbot.log", format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
                     level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -22,10 +22,14 @@ my_persistence = PicklePersistence(filename="data")
 
 #Using .env file, ADMINS_ID_LIST is split by ","
 #But you can also not use dotenv and put information right here
-ADMINS = os.getenv("ADMINS_ID_LIST").split(",")
-ADMINS = list(map(int, ADMINS))
+ADMINS = list(map(int, os.getenv("ADMINS_ID_LIST").split(",")))
+#Same for the ban list
+BANS = list(map(int, os.getenv("ADMINS_ID_LIST").split(",")))
 TARGET_CH = int(os.getenv("CHANNEL_ID"))
 BOT = os.getenv("BOT_TOKEN")
+
+#Limit of messages sent at once when forwarding
+MSG_LIMIT = 20
 
 #Conversation returns
 INSERT_KEY, FWD_MSG = range(2)
@@ -84,6 +88,7 @@ def update_dict(update, context):
             context.bot_data["data"][key] = fwd_data
             context.bot_data["hash"].add(digestmsg(msg))
             update.message.reply_text(f"Message saved with tag <{key}>.")
+            logger.info(f"User {update.message.from_user} added new message with key <{key}>.")
             return ConversationHandler.END
         else:
             update.message.reply_text("The message you are forwarding is already in! Aborting...")
@@ -106,24 +111,41 @@ def error_format(update, context):
 ###USER COMMANDS########
 #Bot commands issuable by all users, should be always safe to use
 
-@run_async
 def getter(update, context):
     if len(context.args) < 1:
         update.message.reply_text("Usage: < /fwd key >, pm me to learn more!")
-    for arg in context.args:
+        return
+    for arg in context.args[:MSG_LIMIT]:
         arg = arg.lower()
         if arg in context.bot_data["data"]:
             fwd_data = context.bot_data["data"][arg]
             fwd_data.counter_update()
-            context.bot.forward_message(chat_id=update.message.chat.id, from_chat_id=fwd_data.fwdmsg.chat.id, message_id=fwd_data.fwdmsg.message_id)
+            context.bot.forward_message(chat_id=update.message.chat.id, from_chat_id=fwd_data.fwdmsg.chat.id,
+                                        message_id=fwd_data.fwdmsg.message_id)
 
-@run_async
+#Very experimental tbh
+def regex_getter(update, context):
+    if len(context.args) < 1:
+        update.message.reply_text("Usage: < /refwd regex >, pm me to learn more!")
+        return
+    #Get only first argument when using regex
+    r = re.compile(context.args[0].lower())
+    #Users can pass arbitrary expressions and those may raise exceptions
+    try:
+        for key in list(filter(r.match, context.bot_data["data"]))[:MSG_LIMIT]:
+            fwd_data = context.bot_data["data"][key]
+            fwd_data.counter_update()
+            context.bot.forward_message(chat_id=update.message.chat.id, from_chat_id=fwd_data.fwdmsg.chat.id,
+                                        message_id=fwd_data.fwdmsg.message_id)
+    except:
+        return
+
 def rng_getter(update, context):
     fwd_data = random.choice(list(context.bot_data["data"].values()))
     fwd_data.tot_counter_update()
-    context.bot.forward_message(chat_id=update.message.chat.id, from_chat_id=fwd_data.fwdmsg.chat.id, message_id=fwd_data.fwdmsg.message_id)
+    context.bot.forward_message(chat_id=update.message.chat.id, from_chat_id=fwd_data.fwdmsg.chat.id,
+                                message_id=fwd_data.fwdmsg.message_id)
 
-@run_async
 def list_keys(update, context):
     if update.message.chat.type == "private":
         #Telegram has a max msg size, list might be
@@ -152,7 +174,6 @@ def list_keys(update, context):
         for s in s_list:
             update.message.reply_text(s, disable_web_page_preview=True)
 
-@run_async
 def get_stats(update, context):
     if len(context.args) >= 1:
         key = context.args[0].lower()
@@ -249,18 +270,19 @@ def main():
     dp = updater.dispatcher
         
      #Adding all possible commands to the handler
-    dp.add_handler(CommandHandler("start", start))
-    dp.add_handler(CommandHandler("help", help))
-    dp.add_handler(CommandHandler("fwd", getter))
-    dp.add_handler(CommandHandler("rng", rng_getter))
-    dp.add_handler(CommandHandler("list", list_keys))
-    dp.add_handler(CommandHandler("stat", get_stats))
+    dp.add_handler(CommandHandler("start", start, run_async=True))
+    dp.add_handler(CommandHandler("help", help, run_async=True))
+    dp.add_handler(CommandHandler("fwd", getter, run_async=True))
+    dp.add_handler(CommandHandler("refwd", regex_getter, run_async=True))
+    dp.add_handler(CommandHandler("rng", rng_getter, run_async=True))
+    dp.add_handler(CommandHandler("list", list_keys, run_async=True))
+    dp.add_handler(CommandHandler("stat", get_stats, run_async=True))
     dp.add_handler(CommandHandler("rmkey", remove_keys))
     dp.add_handler(CommandHandler("edkey", edit_key))
     dp.add_handler(CommandHandler("rehash", rehash_data))
 
     conv_handler = ConversationHandler(
-            entry_points=[CommandHandler("forward", forward, Filters.private)],
+            entry_points=[CommandHandler("forward", forward, Filters.chat_type.private)],
 
             states={
                 INSERT_KEY: [MessageHandler(Filters.regex(r"^[a-zA-Z]+\d*$"), check_key),

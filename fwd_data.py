@@ -10,8 +10,11 @@ class fwdData:
     tot_counter = 0
 
     def __init__(self, fwdmsg, chmsg1, chmsg2):
+        #forwarded message
         self.fwdmsg = fwdmsg
+        #key message in channel
         self.chmsg1 = chmsg1
+        #forward message in channel
         self.chmsg2 = chmsg2
 
     def counter_update(self):
