@@ -6,6 +6,7 @@ import datetime
 import os
 import sys
 import random
+import pickle
 from fwd_data import *
 from dotenv import load_dotenv
 from telegram.ext import *
@@ -18,7 +19,7 @@ logging.basicConfig(filename="fwdbot.log", format='%(asctime)s - %(name)s - %(le
 logger = logging.getLogger(__name__)
 
 #Database file for a persistent dictionary
-my_persistence = PicklePersistence(filename="data")
+bot_persistence = PicklePersistence(filename="data")
 
 #Using .env file, ADMINS_ID_LIST is split by ","
 #But you can also not use dotenv and put information right here
@@ -234,6 +235,7 @@ def remove_keys(update, context):
 def error(update, context):
     logger.warning(f"Update {update} caused error {context.error}")
 
+#Current forwarded messages hash function
 def digestmsg(msg):
     s1 = str(msg.forward_from if msg.forward_from != None else "")
     s2 = str(msg.forward_from_chat if msg.forward_from_chat != None else "")
@@ -261,15 +263,56 @@ def remake_dict(dispatcher):
         print(dispatcher.bot_data["data"][key].fwdmsg.forward_from_message_id)
     print("Done remaking dict. Hopefully.")
 
+#Dumps forwarded messages data into "dump.pickle" file
+def dump_data(dispatcher):
+    print("Dumping bot data...")
+    with open("dump.pickle", "wb+") as f:
+        bot_data = bot_persistence.bot_data["data"].copy()
+        print(bot_data)
+        pickle.dump(bot_data, f, pickle.HIGHEST_PROTOCOL)
+    print("Done dumping bot data. Hopefully.")
+
+#Loads new forwarded messages data from "dump.pickle" file and then rehashes data
+#PREVIOUS DATA WILL BE LOST
+def load_data(dispatcher):
+    print("Loading new bot data...")
+    with open("dump.pickle", "rb") as f:
+        dispatcher.bot_data["data"] = pickle.load(f)
+        rehash_data(dispatcher)
+        dispatcher.update_persistence()
+    print("Done loading new bot data. Hopefully.")
+
 ########################
 
 
 def main():
     #Bot initialization with persistent data
-    updater = Updater(BOT, persistence=my_persistence, use_context=True)
+    updater = Updater(BOT, persistence=bot_persistence, use_context=True)
     dp = updater.dispatcher
-        
-     #Adding all possible commands to the handler
+  
+    #Initializing bot database if first time running
+    #bot_data["data"] is the key-fwd dictionary, bot_data["hash"] is a fwd msg IDs set
+    dp.bot_data.setdefault("data", {})
+    dp.bot_data.setdefault("hash", set())
+
+    #Parsing arguments, if launched with arguments will return before polling
+    argc = 1
+    while argc < len(sys.argv):
+        if sys.argv[argc] == "rehash":
+            rehash_data(dp)
+        elif sys.argv[argc] == "remake":
+            remake_dict(dp)
+        elif sys.argv[argc] == "dump":
+            dump_data(dp)
+        elif sys.argv[argc] == "load":
+            load_data(dp)
+        else:
+            print("Invalid argument.")
+        argc = argc + 1
+    if(argc > 1):
+        return
+         
+    #Adding all possible commands to the handler
     dp.add_handler(CommandHandler("start", start, run_async=True))
     dp.add_handler(CommandHandler("help", help, run_async=True))
     dp.add_handler(CommandHandler("fwd", getter, run_async=True))
@@ -296,19 +339,6 @@ def main():
         
     dp.add_handler(conv_handler)
     dp.add_error_handler(error)
-
-    #Initializing bot database if first time running
-    #bot_data["data"] is the key-fwd dictionary, bot_data["hash"] is a fwd msg IDs set
-    dp.bot_data.setdefault("data", {})
-    dp.bot_data.setdefault("hash", set())
-
-    if len(sys.argv) > 1:
-        if sys.argv[1] == "rehash":
-            rehash_data(dp)
-        if sys.argv[1] == "remake":
-            remake_dict(dp)
-        else:
-            print("Invalid argument.")
 
     #Start! Bot will try to close nicely with CTRL+C by having issued idle()
     updater.start_polling()
